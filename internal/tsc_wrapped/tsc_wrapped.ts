@@ -244,7 +244,7 @@ function runFromOptions(
     }
   }
 
-  plugins.forEach(plugin => plugin.wrap(program));
+  plugins.forEach(plugin => plugin.wrap(program, bazelOpts));
 
   const compilationTargets = program.getSourceFiles().filter(
       fileName => isCompilationTarget(bazelOpts, fileName));
