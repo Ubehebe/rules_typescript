@@ -10,6 +10,7 @@ import {CompilerHost} from './compiler_host';
 import * as bazelDiagnostics from './diagnostics';
 import {constructManifest} from './manifest';
 import * as perfTrace from './perf_trace';
+import {Plugin} from './plugin_api';
 import {PLUGIN as strictDepsPlugin} from './strict_deps';
 import {BazelOptions, parseTsconfig, resolveNormalizedPath} from './tsconfig';
 import {debug, log, runAsWorker, runWorkerLoop} from './worker';
@@ -18,19 +19,32 @@ import {debug, log, runAsWorker, runWorkerLoop} from './worker';
  * Top-level entry point for tsc_wrapped.
  */
 export function main(args: string[]) {
-  if (runAsWorker(args)) {
-    log('Starting TypeScript compiler persistent worker...');
-    runWorkerLoop(runOneBuild);
-    // Note: intentionally don't process.exit() here, because runWorkerLoop
-    // is waiting for async callbacks from node.
-  } else {
-    debug('Running a single build...');
-    if (args.length === 0) throw new Error('Not enough arguments');
-    if (!runOneBuild(args)) {
-      return 1;
-    }
+  return new CompilerMain().main(args);
+}
+
+let plugins: ReadonlyArray<Plugin>;
+
+export class CompilerMain {
+
+  constructor(options: {plugins?: ReadonlyArray<Plugin>}= {}) {
+    plugins = options.plugins || [];
   }
-  return 0;
+
+  main(args: string[]): number {
+    if (runAsWorker(args)) {
+      log('Starting TypeScript compiler persistent worker...');
+      runWorkerLoop(runOneBuild);
+      // Note: intentionally don't process.exit() here, because runWorkerLoop
+      // is waiting for async callbacks from node.
+    } else {
+      debug('Running a single build...');
+      if (args.length === 0) throw new Error('Not enough arguments');
+      if (!runOneBuild(args)) {
+        return 1;
+      }
+    }
+    return 0;
+  }
 }
 
 /** The one ProgramAndFileCache instance used in this process. */
@@ -229,6 +243,8 @@ function runFromOptions(
       return false;
     }
   }
+
+  plugins.forEach(plugin => plugin.wrap(program));
 
   const compilationTargets = program.getSourceFiles().filter(
       fileName => isCompilationTarget(bazelOpts, fileName));
